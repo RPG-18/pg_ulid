@@ -1,0 +1,3 @@
+comment = 'generator of sequential ULIDs'
+default_version = '1.0'
+relocatable = true
