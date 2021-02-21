@@ -20,7 +20,7 @@ Extension for generate [ULIDs](https://github.com/ulid/spec).
 
 ## Examples
 
-```postgresql
+```sql
 CREATE EXTENSION ulid;
 -- ...
 CREATE TABLE foo
