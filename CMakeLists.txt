@@ -20,5 +20,8 @@ string(REPLACE "/usr/" "" PostgreSQL_PKGLIBDIR ${PostgreSQL_PKGLIBDIRS})
 install(TARGETS ulid
         LIBRARY DESTINATION ${PostgreSQL_PKGLIBDIRS})
 
-install(FILES sql/ulid--1.0.sql sql/ulid.control
+install(FILES
+        sql/ulid--1.0--1.1.sql
+        sql/ulid--1.1.sql
+        sql/ulid.control
         DESTINATION ${PostgreSQL_SHAREDIR}/extension)

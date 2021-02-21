@@ -1,5 +1,6 @@
 #include <string>
 #include <chrono>
+#include <vector>
 
 extern "C" {
 #include <postgres.h>
@@ -14,6 +15,9 @@ Datum ulid_generate(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(ulid_to_string);
 Datum ulid_to_string(PG_FUNCTION_ARGS);
+
+PG_FUNCTION_INFO_V1(ulid_from_string);
+Datum ulid_from_string(PG_FUNCTION_ARGS);
 }
 
 namespace
@@ -21,8 +25,39 @@ namespace
 const std::string ENCODING("0123456789ABCDEFGHJKMNPQRSTVWXYZ");
 
 constexpr uint ENTROPY_OFFSET = 6;
+
 constexpr uint ENCODED_ULID_LEN = 26; // 10 byte timestamp + 16 bytes of entropy
 constexpr uint ENCODED_TEXT_LEN = ENCODED_ULID_LEN + VARHDRSZ;
+
+const std::vector<uint8_t> DECODING =
+    {
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x01,
+        0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+        0x0F, 0x10, 0x11, 0xFF, 0x12, 0x13, 0xFF, 0x14, 0x15, 0xFF,
+        0x16, 0x17, 0x18, 0x19, 0x1A, 0xFF, 0x1B, 0x1C, 0x1D, 0x1E,
+        0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0A, 0x0B, 0x0C,
+        0x0D, 0x0E, 0x0F, 0x10, 0x11, 0xFF, 0x12, 0x13, 0xFF, 0x14,
+        0x15, 0xFF, 0x16, 0x17, 0x18, 0x19, 0x1A, 0xFF, 0x1B, 0x1C,
+        0x1D, 0x1E, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    };
 }
 
 Datum ulid_generate(PG_FUNCTION_ARGS)
@@ -51,7 +86,7 @@ Datum ulid_to_string(PG_FUNCTION_ARGS)
     // https://github.com/oklog/ulid/blob/master/ulid.go#L293
     const auto ulid = PG_GETARG_UUID_P(0);
     auto dest = static_cast<text *>(palloc0(ENCODED_TEXT_LEN));
-    SET_VARSIZE(dest, ENCODED_ULID_LEN);
+    SET_VARSIZE(dest, ENCODED_TEXT_LEN);
 
     const auto id = ulid->data;
 
@@ -86,4 +121,80 @@ Datum ulid_to_string(PG_FUNCTION_ARGS)
     dest->vl_dat[25] = ENCODING[id[15] & 31];
 
     PG_RETURN_TEXT_P(dest);
+}
+
+// https://github.com/oklog/ulid/blob/master/ulid.go#L144
+Datum ulid_from_string(PG_FUNCTION_ARGS)
+{
+    const auto txt = PG_GETARG_TEXT_P(0);
+    const auto len = VARSIZE(txt);
+
+    if (len != ENCODED_TEXT_LEN) {
+        elog(ERROR, "invalid length, expected 26 symbols");
+    }
+
+    // Check if all the characters in a base32 encoded ULID are part of the
+    // expected base32 character set.
+    const auto v = reinterpret_cast<uint8_t *>(txt->vl_dat);
+    if (DECODING[v[0]] == 0xFF ||
+        DECODING[v[1]] == 0xFF ||
+        DECODING[v[2]] == 0xFF ||
+        DECODING[v[3]] == 0xFF ||
+        DECODING[v[4]] == 0xFF ||
+        DECODING[v[5]] == 0xFF ||
+        DECODING[v[6]] == 0xFF ||
+        DECODING[v[7]] == 0xFF ||
+        DECODING[v[8]] == 0xFF ||
+        DECODING[v[9]] == 0xFF ||
+        DECODING[v[10]] == 0xFF ||
+        DECODING[v[11]] == 0xFF ||
+        DECODING[v[12]] == 0xFF ||
+        DECODING[v[13]] == 0xFF ||
+        DECODING[v[14]] == 0xFF ||
+        DECODING[v[15]] == 0xFF ||
+        DECODING[v[16]] == 0xFF ||
+        DECODING[v[17]] == 0xFF ||
+        DECODING[v[18]] == 0xFF ||
+        DECODING[v[19]] == 0xFF ||
+        DECODING[v[20]] == 0xFF ||
+        DECODING[v[21]] == 0xFF ||
+        DECODING[v[22]] == 0xFF ||
+        DECODING[v[23]] == 0xFF ||
+        DECODING[v[24]] == 0xFF ||
+        DECODING[v[25]] == 0xFF
+        ) {
+        elog(ERROR, "bad data character");
+    }
+
+    // Check if the first character in a base32 encoded ULID will overflow. This
+    // happens because the base32 representation encodes 130 bits, while the
+    // ULID is only 128 bits.
+    //
+    // See https://github.com/oklog/ulid/issues/9 for details.
+    if (v[0] > '7') {
+        elog(ERROR, "overflow");
+    }
+
+    auto ulid = static_cast<pg_uuid_t *>(palloc(sizeof(pg_uuid_t)));
+
+    // 6 bytes timestamp (48 bits)
+    ulid->data[0] = (DECODING[v[0]] << 5) | DECODING[v[1]];
+    ulid->data[1] = (DECODING[v[2]] << 3) | (DECODING[v[3]] >> 2);
+    ulid->data[2] = (DECODING[v[3]] << 6) | (DECODING[v[4]] << 1) | (DECODING[v[5]] >> 4);
+    ulid->data[3] = (DECODING[v[5]] << 4) | (DECODING[v[6]] >> 1);
+    ulid->data[4] = (DECODING[v[6]] << 7) | (DECODING[v[7]] << 2) | (DECODING[v[8]] >> 3);
+    ulid->data[5] = (DECODING[v[8]] << 5) | DECODING[v[9]];
+
+    // 10 bytes of entropy (80 bits)
+    ulid->data[6] = (DECODING[v[10]] << 3) | (DECODING[v[11]] >> 2);
+    ulid->data[7] = (DECODING[v[11]] << 6) | (DECODING[v[12]] << 1) | (DECODING[v[13]] >> 4);
+    ulid->data[8] = (DECODING[v[13]] << 4) | (DECODING[v[14]] >> 1);
+    ulid->data[9] = (DECODING[v[14]] << 7) | (DECODING[v[15]] << 2) | (DECODING[v[16]] >> 3);
+    ulid->data[10] = (DECODING[v[16]] << 5) | DECODING[v[17]];
+    ulid->data[11] = (DECODING[v[18]] << 3) | DECODING[v[19]] >> 2;
+    ulid->data[12] = (DECODING[v[19]] << 6) | (DECODING[v[20]] << 1) | (DECODING[v[21]] >> 4);
+    ulid->data[13] = (DECODING[v[21]] << 4) | (DECODING[v[22]] >> 1);
+    ulid->data[14] = (DECODING[v[22]] << 7) | (DECODING[v[23]] << 2) | (DECODING[v[24]] >> 3);
+    ulid->data[15] = (DECODING[v[24]] << 5) | DECODING[v[25]];
+    PG_RETURN_UUID_P(ulid);
 }
