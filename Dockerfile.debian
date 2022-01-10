@@ -12,7 +12,7 @@ ADD . /pg_ulid
 
 WORKDIR /pg_ulid/build
 
-RUN cmake -DCMAKE_BUILD_TYPE=Release .. && \
+RUN cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr .. && \
     cmake --build . && \
     checkinstall -y \
         --pkgname=pg_ulid \
