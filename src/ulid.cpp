@@ -3,8 +3,9 @@
 #include <vector>
 
 extern "C" {
-#include <fmgr.h>
 #include <postgres.h>
+
+#include <fmgr.h>
 #include <utils/uuid.h>
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;

@@ -1,0 +1,22 @@
+FROM debian:bullseye as build
+
+RUN apt-get update && \
+    apt-get install -y \
+      libpq-dev \
+      postgresql-server-dev-all \
+      g++ \
+      cmake \
+      checkinstall
+
+ADD . /pg_ulid
+
+WORKDIR /pg_ulid/build
+
+RUN cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake --build . && \
+    checkinstall -y \
+        --pkgname=pg_ulid \
+        --pkgversion=1.1
+
+FROM scratch AS export-stage
+COPY --from=build /pg_ulid/build/pg-ulid_1.1-1_amd64.deb .

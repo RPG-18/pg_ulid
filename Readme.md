@@ -33,3 +33,8 @@ INSERT INTO foo(value) SELECT generate_series(1, 1000) as value ;
 -- ...
 SELECT ulid_to_string(id), value FROM foo ORDER BY id LIMIT 10;
 ```
+
+### Build in docker
+
+    docker build -f Dockerfile.debian -t deb .
+    sudo find /var/lib/docker/ -name pg-ulid_1.1-1_amd64.deb -type f | xargs sudo ls -hrt | tail -1 | xargs  -i  sudo cp -v  '{}' .
