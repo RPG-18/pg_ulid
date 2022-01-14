@@ -9,10 +9,10 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 find_package(PostgreSQL REQUIRED)
 find_package(Postgres REQUIRED)
 
-include_directories(${PostgreSQL_INCLUDE_DIRS})
+include_directories(SYSTEM ${PostgreSQL_INCLUDE_SERVERDIRS})
 
 add_library(ulid SHARED src/ulid.cpp)
-target_link_libraries(ulid ${PHONENUMBER_LIB})
+target_link_libraries(ulid PostgreSQL::PostgreSQL)
 
 string(REPLACE "/usr/" "" PostgreSQL_SHAREDIR ${PostgreSQL_SHAREDIRS})
 string(REPLACE "/usr/" "" PostgreSQL_PKGLIBDIR ${PostgreSQL_PKGLIBDIRS})
